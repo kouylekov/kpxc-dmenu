@@ -1,0 +1,9 @@
+# Compiled binary (built with `go build -o pass-cli-dmenu .`)
+/pass-cli-dmenu
+
+# Local Claude Code / editor state
+/.claude/
+
+# Go build/test artifacts
+*.test
+*.out
