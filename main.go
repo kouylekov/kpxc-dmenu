@@ -15,6 +15,7 @@ type options struct {
 	menu         string
 	clip         string
 	kpxcBin      string
+	groups       string
 	showGroup    bool
 	showOTP      bool
 	clearSeconds int
@@ -33,7 +34,7 @@ func main() {
 	kpxcBin := mustExecPath(opts.kpxcBin)
 
 	// Load cache; refresh in the background if stale so the menu opens fast.
-	items := loadOrFetch(opts.cachePath, opts.refreshTTL, kpxcBin)
+	items := loadOrFetch(opts.cachePath, opts.refreshTTL, kpxcBin, opts.groups)
 
 	if len(items) == 0 {
 		fmt.Fprintln(os.Stderr, "kpxc-dmenu: no credentials found")
@@ -95,6 +96,7 @@ func parseFlags() options {
 	flag.StringVar(&opts.menu, "menu", "fuzzel", "menu program")
 	flag.StringVar(&opts.clip, "clip", "wl-copy", "clipboard tool")
 	flag.StringVar(&opts.kpxcBin, "kpxc", "kpxc", "path to the kpxc (keepassxc-cli) wrapper")
+	flag.StringVar(&opts.groups, "group", "Work", "comma-separated groups to include (empty = all)")
 	flag.BoolVar(&opts.showGroup, "show-group", true, "show the group name in the menu")
 	flag.BoolVar(&opts.showOTP, "show-otp", true, "show OTP entries for items that support them")
 	flag.IntVar(&opts.clearSeconds, "clear-seconds", 20, "auto-clear clipboard after N seconds (0 = never)")
@@ -116,7 +118,7 @@ func defaultCachePath() string {
 
 // loadOrFetch returns cache contents, refreshing in the background when stale.
 // On first run (no cache) it refreshes synchronously so the menu isn't empty.
-func loadOrFetch(cachePath string, ttl time.Duration, kpxcBin string) []Item {
+func loadOrFetch(cachePath string, ttl time.Duration, kpxcBin, groups string) []Item {
 	c, err := loadCache(cachePath)
 	haveCache := err == nil
 
@@ -127,7 +129,7 @@ func loadOrFetch(cachePath string, ttl time.Duration, kpxcBin string) []Item {
 	if haveCache {
 		// Stale: serve the old list now, refetch in the background for next time.
 		go func() {
-			if items, err := listItems(kpxcBin); err == nil {
+			if items, err := listItems(kpxcBin, groups); err == nil {
 				_ = saveCache(cachePath, items)
 			}
 		}()
@@ -135,7 +137,7 @@ func loadOrFetch(cachePath string, ttl time.Duration, kpxcBin string) []Item {
 	}
 
 	// First run: block on a fresh fetch.
-	if items, err := listItems(kpxcBin); err == nil {
+	if items, err := listItems(kpxcBin, groups); err == nil {
 		_ = saveCache(cachePath, items)
 		return items
 	}

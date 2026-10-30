@@ -40,7 +40,8 @@ type kpString struct {
 // listItems exports the database as XML (one unlock) and flattens it into
 // credential metadata. The kpxc wrapper supplies the master password and the
 // database path, so no secret ever passes through this process's arguments.
-func listItems(kpxc string) ([]Item, error) {
+// groups is a comma-separated allow-list of top-level groups (empty = all).
+func listItems(kpxc, groups string) ([]Item, error) {
 	raw, err := runKPXc(kpxc, "export", "-f", "xml")
 	if err != nil {
 		return nil, fmt.Errorf("exporting database: %w", err)
@@ -53,7 +54,32 @@ func listItems(kpxc string) ([]Item, error) {
 
 	var items []Item
 	collectEntries(f.Root.Group, nil, &items)
-	return items, nil
+	return filterGroups(items, groups), nil
+}
+
+// filterGroups keeps only entries whose group is, or is nested under, one of
+// the comma-separated group names in spec. An empty spec keeps everything.
+func filterGroups(items []Item, spec string) []Item {
+	var prefixes []string
+	for _, g := range strings.Split(spec, ",") {
+		if g = strings.TrimSpace(g); g != "" {
+			prefixes = append(prefixes, g)
+		}
+	}
+	if len(prefixes) == 0 {
+		return items
+	}
+
+	var out []Item
+	for _, it := range items {
+		for _, p := range prefixes {
+			if it.Group == p || strings.HasPrefix(it.Group, p+"/") {
+				out = append(out, it)
+				break
+			}
+		}
+	}
+	return out
 }
 
 // collectEntries walks the group tree, building each entry's full path. The

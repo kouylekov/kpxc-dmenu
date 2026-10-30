@@ -10,7 +10,7 @@ which pulls the master password from `pass` (GPG) so the menu never prompts.
 
 ## Features
 
-- Lists all entries across the database's groups.
+- Lists entries from the configured group(s) (default: `Work`).
 - Copies passwords, and generates one-time codes for entries with OTP configured.
 - Shows the seconds remaining in the current TOTP window on OTP entries.
 - Auto-clears the clipboard after N seconds (default 20).
@@ -61,6 +61,7 @@ Mod+U { spawn "/home/milen/projects/kpxc-dmenu/kpxc-dmenu"; }
 | `-menu`          | `fuzzel`         | Menu program (must support `--dmenu`)                  |
 | `-clip`          | `wl-copy`        | Clipboard tool                                         |
 | `-kpxc`          | `kpxc`           | Path to the `kpxc` (keepassxc-cli) wrapper             |
+| `-group`         | `Work`           | Comma-separated groups to include (empty = all)        |
 | `-show-group`    | `true`           | Show the group name in the menu                        |
 | `-show-otp`      | `true`           | Show OTP entries for items that support them           |
 | `-clear-seconds` | `20`             | Auto-clear the clipboard after N seconds (`0` = never) |
