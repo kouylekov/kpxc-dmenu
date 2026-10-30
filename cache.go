@@ -11,9 +11,8 @@ import (
 // password on demand — never the password itself.
 type Item struct {
 	Title       string `json:"title"`
-	Vault       string `json:"vault"`
-	ItemID      string `json:"item_id"`
-	ShareID     string `json:"share_id"`
+	Group       string `json:"group"`
+	Path        string `json:"path"`
 	HasOTP      bool   `json:"has_otp,omitempty"`
 	HasPassword bool   `json:"has_password,omitempty"`
 }

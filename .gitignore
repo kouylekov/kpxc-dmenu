@@ -1,5 +1,5 @@
-# Compiled binary (built with `go build -o pass-cli-dmenu .`)
-/pass-cli-dmenu
+# Compiled binary (built with `go build -o kpxc-dmenu .`)
+/kpxc-dmenu
 
 # Local Claude Code / editor state
 /.claude/

@@ -14,16 +14,14 @@ import (
 type options struct {
 	menu         string
 	clip         string
-	passBin      string
-	types        string
-	showVault    bool
+	kpxcBin      string
+	showGroup    bool
 	showOTP      bool
 	clearSeconds int
 	refreshTTL   time.Duration
 	cachePath    string
 	prompt       string
 	lines        int
-	terminal     bool
 }
 
 func main() {
@@ -32,19 +30,19 @@ func main() {
 	// Resolve tool binaries; these all have :0/wayland available.
 	menuBin := mustExecPath(opts.menu)
 	clipBin := mustExecPath(opts.clip)
-	passBin := mustExecPath(opts.passBin)
+	kpxcBin := mustExecPath(opts.kpxcBin)
 
 	// Load cache; refresh in the background if stale so the menu opens fast.
-	items := loadOrFetch(opts.cachePath, opts.refreshTTL, passBin, opts.types)
+	items := loadOrFetch(opts.cachePath, opts.refreshTTL, kpxcBin)
 
 	if len(items) == 0 {
-		fmt.Fprintln(os.Stderr, "pass-cli-dmenu: no credentials found")
+		fmt.Fprintln(os.Stderr, "kpxc-dmenu: no credentials found")
 		os.Exit(1)
 	}
 
 	// Build the unique, disambiguated labels shown in the menu. Items with an
 	// OTP get a dedicated entry so the code can be copied on demand.
-	labels, entries := buildEntries(items, opts.showVault, opts.showOTP)
+	labels, entries := buildEntries(items, opts.showGroup, opts.showOTP)
 
 	selected := showMenu(menuBin, opts.prompt, opts.lines, labels)
 	if selected == "" {
@@ -53,7 +51,7 @@ func main() {
 
 	e, ok := entries[selected]
 	if !ok {
-		fmt.Fprintln(os.Stderr, "pass-cli-dmenu: unknown selection")
+		fmt.Fprintln(os.Stderr, "kpxc-dmenu: unknown selection")
 		os.Exit(1)
 	}
 
@@ -61,21 +59,21 @@ func main() {
 	var what string
 	var err error
 	if e.kind == "otp" {
-		secret, err = fetchTOTP(passBin, e.item)
+		secret, err = fetchTOTP(kpxcBin, e.item)
 		what = "one-time code"
 	} else {
-		secret, err = fetchPassword(passBin, e.item)
+		secret, err = fetchPassword(kpxcBin, e.item)
 		what = "password"
 	}
 	if err != nil {
-		notify("pass-cli-dmenu", "Failed to fetch: "+err.Error())
+		notify("kpxc-dmenu", "Failed to fetch: "+err.Error())
 		fmt.Fprintln(os.Stderr, err)
 		logErr(opts.cachePath, err)
 		os.Exit(1)
 	}
 
 	copyToClipboard(clipBin, secret)
-	notify("pass-cli-dmenu", fmt.Sprintf("%s for %q copied to clipboard", what, e.item.Title))
+	notify("kpxc-dmenu", fmt.Sprintf("%s for %q copied to clipboard", what, e.item.Title))
 
 	if opts.clearSeconds > 0 {
 		// Strictly a goroutine, a freshly started wl-copy serves the selection
@@ -96,9 +94,8 @@ func parseFlags() options {
 	var opts options
 	flag.StringVar(&opts.menu, "menu", "fuzzel", "menu program")
 	flag.StringVar(&opts.clip, "clip", "wl-copy", "clipboard tool")
-	flag.StringVar(&opts.passBin, "pass", "pass-cli", "path to pass-cli binary")
-	flag.StringVar(&opts.types, "types", "login", "comma-separated item types to show (empty = all)")
-	flag.BoolVar(&opts.showVault, "show-vault", true, "show vault name in the menu")
+	flag.StringVar(&opts.kpxcBin, "kpxc", "kpxc", "path to the kpxc (keepassxc-cli) wrapper")
+	flag.BoolVar(&opts.showGroup, "show-group", true, "show the group name in the menu")
 	flag.BoolVar(&opts.showOTP, "show-otp", true, "show OTP entries for items that support them")
 	flag.IntVar(&opts.clearSeconds, "clear-seconds", 20, "auto-clear clipboard after N seconds (0 = never)")
 	flag.DurationVar(&opts.refreshTTL, "refresh-ttl", 30*time.Second, "cache freshness window")
@@ -112,14 +109,14 @@ func parseFlags() options {
 
 func defaultCachePath() string {
 	if x := os.Getenv("XDG_CACHE_HOME"); x != "" {
-		return filepath.Join(x, "pass-cli-dmenu", "items.json")
+		return filepath.Join(x, "keepassxc-dmenu", "items.json")
 	}
-	return filepath.Join(os.Getenv("HOME"), ".cache", "pass-cli-dmenu", "items.json")
+	return filepath.Join(os.Getenv("HOME"), ".cache", "keepassxc-dmenu", "items.json")
 }
 
 // loadOrFetch returns cache contents, refreshing in the background when stale.
 // On first run (no cache) it refreshes synchronously so the menu isn't empty.
-func loadOrFetch(cachePath string, ttl time.Duration, passBin, types string) []Item {
+func loadOrFetch(cachePath string, ttl time.Duration, kpxcBin string) []Item {
 	c, err := loadCache(cachePath)
 	haveCache := err == nil
 
@@ -130,7 +127,7 @@ func loadOrFetch(cachePath string, ttl time.Duration, passBin, types string) []I
 	if haveCache {
 		// Stale: serve the old list now, refetch in the background for next time.
 		go func() {
-			if items, err := listItems(passBin, types); err == nil {
+			if items, err := listItems(kpxcBin); err == nil {
 				_ = saveCache(cachePath, items)
 			}
 		}()
@@ -138,7 +135,7 @@ func loadOrFetch(cachePath string, ttl time.Duration, passBin, types string) []I
 	}
 
 	// First run: block on a fresh fetch.
-	if items, err := listItems(passBin, types); err == nil {
+	if items, err := listItems(kpxcBin); err == nil {
 		_ = saveCache(cachePath, items)
 		return items
 	}
@@ -154,8 +151,8 @@ type entry struct {
 }
 
 // buildEntries produces unique display labels and a lookup back to the
-// credential + action. Titles are disambiguated across vaults and actions.
-func buildEntries(items []Item, showVault, showOTP bool) ([]string, map[string]*entry) {
+// credential + action. Titles are disambiguated across groups and actions.
+func buildEntries(items []Item, showGroup, showOTP bool) ([]string, map[string]*entry) {
 	labels := make([]string, 0, len(items))
 	entries := make(map[string]*entry, len(items))
 	seen := map[string]int{}
@@ -166,13 +163,13 @@ func buildEntries(items []Item, showVault, showOTP bool) ([]string, map[string]*
 	otpLeft := totpSecondsLeft(30)
 
 	add := func(it Item, kind string) {
-		label := fmt.Sprintf("%s  [%s]", it.Title, it.Vault)
+		label := fmt.Sprintf("%s  [%s]", it.Title, it.Group)
 		if kind == "otp" {
 			label = fmt.Sprintf("%s · OTP · %ds", it.Title, otpLeft)
-			if showVault {
-				label = fmt.Sprintf("%s · OTP · %ds  [%s]", it.Title, otpLeft, it.Vault)
+			if showGroup {
+				label = fmt.Sprintf("%s · OTP · %ds  [%s]", it.Title, otpLeft, it.Group)
 			}
-		} else if !showVault {
+		} else if !showGroup {
 			label = it.Title
 		}
 		n := seen[label]
@@ -259,7 +256,7 @@ func notify(summary, body string) {
 }
 
 // logErr appends an error to a plain-text log next to the cache, so details
-// that get truncated in a desktop notification (long pass-cli stderr) are
+// that get truncated in a desktop notification (long kpxc stderr) are
 // still available to read in full.
 func logErr(cachePath string, err error) {
 	f, ferr := os.OpenFile(filepath.Join(filepath.Dir(cachePath), "error.log"),
